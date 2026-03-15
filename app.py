@@ -1,9 +1,11 @@
 import os
+from dotenv import load_dotenv  # 新增：加载保险箱工具
 import google.generativeai as genai
 from flask import Flask, render_template, request, jsonify
 import random
 import time
-
+# 加载 .env 文件里的秘密信息
+load_dotenv()
 # ==========================================
 # 0. 绝对路径配置
 # ==========================================
@@ -23,7 +25,9 @@ app = Flask(__name__,
             static_url_path='/YVstatic',
             template_folder=TEMPLATE_DIR)
 
-genai.configure(api_key="AIzaSyCoH7Kq8u0pVn1r2nOscO_RKoY8b3vmIyc", transport='rest')
+# 变成从环境变量拿 Key
+api_key = os.getenv("GEMINI_API_KEY")
+genai.configure(api_key=api_key, transport='rest')
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 
