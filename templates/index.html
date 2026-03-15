@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>WeChat Garden - 3D情绪花园日记</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <style>
+        body { margin: 0; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f5f7fa; }
+        #webgl-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+
+        .glass-panel { background: rgba(255, 255, 255, 0.65); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.7); box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.15); }
+        body.dark-mode .glass-panel { background: rgba(30, 30, 40, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); color: #e2e8f0; }
+        body.dark-mode .text-gray-800 { color: #f8fafc; }
+        body.dark-mode .text-gray-700 { color: #cbd5e1; }
+        body.dark-mode .text-gray-600 { color: #94a3b8; }
+        body.dark-mode .text-gray-500 { color: #64748b; }
+        body.dark-mode .bg-white\/40 { background: rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.05); }
+
+        .glass-modal { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); border: 1px solid rgba(255, 255, 255, 0.9); box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.2); }
+
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 12px; width: 12px; border-radius: 50%; background: #ffffff; border: 2px solid #4a5568; cursor: pointer; margin-top: -4px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        body.dark-mode input[type=range]::-webkit-slider-thumb { border-color: #818cf8; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: rgba(0, 0, 0, 0.15); border-radius: 2px; }
+        body.dark-mode input[type=range]::-webkit-slider-runnable-track { background: rgba(255, 255, 255, 0.2); }
+        input[type=range]:focus { outline: none; }
+        input[type=checkbox] { accent-color: #4a5568; width: 14px; height: 14px; cursor: pointer; }
+        body.dark-mode input[type=checkbox] { accent-color: #818cf8; }
+
+        .custom-scroll::-webkit-scrollbar { width: 5px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 5px; }
+        textarea::-webkit-scrollbar { width: 0px; background: transparent; }
+
+        .section-title { display: flex; align-items: center; font-size: 0.75rem; font-weight: 700; color: #4a5568; margin-top: 1rem; margin-bottom: 0.5rem; }
+        body.dark-mode .section-title { color: #a5b4fc; }
+        .section-title::after { content: ''; flex: 1; height: 1px; background: rgba(0,0,0,0.08); margin-left: 8px; }
+        body.dark-mode .section-title::after { background: rgba(255,255,255,0.1); }
+
+        @keyframes float { 0% { transform: translateY(0px) scale(1.1); } 50% { transform: translateY(-3px) scale(1.1); } 100% { transform: translateY(0px) scale(1.1); } }
+        .flower-anim { animation: float 3s ease-in-out infinite; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)); }
+    </style>
+</head>
+<body class="transition-colors duration-700">
+
+    <div id="loading-overlay" class="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#f5f7fa] dark:bg-[#1e1e2d] transition-opacity duration-1000">
+        <div class="text-5xl mb-6 animate-bounce">🌱</div>
+        <div class="text-xl font-bold text-gray-800 dark:text-gray-200 tracking-widest">正在唤醒唯美花园...</div>
+        <div class="text-sm text-gray-500 dark:text-gray-400 mt-3 font-medium" id="loading-progress">准备中</div>
+    </div>
+
+    <div id="webgl-container"></div>
+
+    <div class="absolute top-4 left-4 z-10 w-72 glass-panel rounded-2xl p-5 custom-scroll overflow-y-auto max-h-[calc(100vh-32px)] text-sm transition-all duration-300" id="left-panel">
+    <h1 class="text-xl font-bold text-gray-800 tracking-wide mb-1 transition-colors">WeChat Garden</h1>
+    <p class="text-[10px] text-gray-500 mb-4 transition-colors">BP 多模态核心演示平台</p>
+
+    <div class="section-title">天空环境</div>
+    <div class="bg-gradient-to-r from-blue-50 to-pink-50 rounded-lg p-3 mb-2 shadow-inner border border-white/50 dark:from-indigo-900/50 dark:to-purple-900/50 dark:border-white/10 transition-colors">
+        <label class="flex items-center justify-between cursor-pointer w-full">
+            <span class="text-[11px] font-bold text-gray-700 flex items-center gap-1.5"><span id="mode-icon">☀️</span> 夜间模式</span>
+            <div class="relative">
+                <input type="checkbox" id="ctrl-night-mode" class="sr-only">
+                <div class="block bg-gray-300 w-8 h-5 rounded-full shadow-inner transition-colors duration-300" id="toggle-bg"></div>
+                <div class="dot absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition-transform duration-300 transform" id="toggle-dot"></div>
+            </div>
+        </label>
+    </div>
+
+    <div class="section-title">日历布局</div>
+    <div class="space-y-3 px-1">
+        <div>
+            <div class="flex justify-between text-[11px] text-gray-700 font-semibold mb-1">
+                <label>网格间距</label><span id="val-spacing" class="text-blue-500">1.2</span>
+            </div>
+            <input type="range" id="ctrl-spacing" min="0.5" max="3" step="0.1" value="1.2">
+        </div>
+        <div>
+            <div class="flex justify-between text-[11px] text-gray-700 font-semibold mb-1">
+                <label>月份间隔</label><span id="val-gap" class="text-blue-500">8.0</span>
+            </div>
+            <input type="range" id="ctrl-gap" min="2" max="15" step="0.5" value="8.0">
+        </div>
+        <div>
+            <div class="flex justify-between text-[11px] text-gray-700 font-semibold mb-1">
+                <label>每行月数</label><span id="val-row" class="text-blue-500">6</span>
+            </div>
+            <input type="range" id="ctrl-row" min="1" max="12" step="1" value="6">
+        </div>
+    </div>
+
+    <div class="section-title">花园生态</div>
+    <div class="space-y-3 px-1">
+        <div>
+            <div class="flex justify-between text-[11px] text-gray-700 font-semibold mb-1">
+                <label>草丛密度</label><span id="val-density" class="text-blue-500">0.5</span>
+            </div>
+            <input type="range" id="ctrl-density" min="0" max="1" step="0.05" value="0.5">
+        </div>
+        <div>
+            <div class="flex justify-between text-[11px] text-gray-700 font-semibold mb-1">
+                <label>风力摇摆</label><span id="val-wind" class="text-blue-500">0.5</span>
+            </div>
+            <input type="range" id="ctrl-wind" min="0" max="2" step="0.1" value="0.5">
+        </div>
+        <div>
+            <div class="flex justify-between text-[11px] text-gray-700 font-semibold mb-1">
+                <label>基础比例</label><span id="val-scale" class="text-blue-500">1.0</span>
+            </div>
+            <input type="range" id="ctrl-scale" min="0.2" max="2.0" step="0.1" value="1.0">
+        </div>
+    </div>
+
+    <div class="section-title">情绪花卉大小</div>
+    <div class="grid grid-cols-2 gap-x-3 gap-y-4 px-1">
+        <div>
+            <div class="flex justify-between text-[10px] text-gray-700 font-bold mb-1"><label>😄 开心</label><span id="val-size-happy">1.0</span></div>
+            <input type="range" id="ctrl-size-happy" min="0" max="3" step="0.1" value="1.0">
+        </div>
+        <div>
+            <div class="flex justify-between text-[10px] text-gray-700 font-bold mb-1"><label>😢 难过</label><span id="val-size-sad">1.0</span></div>
+            <input type="range" id="ctrl-size-sad" min="0" max="3" step="0.1" value="1.0">
+        </div>
+        <div>
+            <div class="flex justify-between text-[10px] text-gray-700 font-bold mb-1"><label>❓ 疑问</label><span id="val-size-question">1.0</span></div>
+            <input type="range" id="ctrl-size-question" min="0" max="3" step="0.1" value="1.0">
+        </div>
+        <div>
+            <div class="flex justify-between text-[10px] text-gray-700 font-bold mb-1"><label>☕ 日常</label><span id="val-size-daily">1.0</span></div>
+            <input type="range" id="ctrl-size-daily" min="0" max="3" step="0.1" value="1.0">
+        </div>
+        <div>
+            <div class="flex justify-between text-[10px] text-gray-700 font-bold mb-1"><label>💢 愤怒</label><span id="val-size-angry">1.0</span></div>
+            <input type="range" id="ctrl-size-angry" min="0" max="3" step="0.1" value="1.0">
+        </div>
+        <div>
+            <div class="flex justify-between text-[10px] text-gray-700 font-bold mb-1"><label>😰 焦虑</label><span id="val-size-anxious">1.0</span></div>
+            <input type="range" id="ctrl-size-anxious" min="0" max="3" step="0.1" value="1.0">
+        </div>
+    </div>
+
+    <div class="section-title">显示设置</div>
+    <div class="grid grid-cols-2 gap-2 px-1 text-[10px] text-gray-700 font-bold mb-4">
+        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="ctrl-label-month" checked> 月份标签</label>
+        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="ctrl-label-date" checked> 日期标签</label>
+        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="ctrl-floor" checked> 显示地面</label>
+        <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="ctrl-grid" checked> 显示网格</label>
+    </div>
+
+    <button id="btn-regenerate" class="w-full bg-indigo-600 text-white rounded-xl py-3 text-xs font-bold hover:bg-indigo-700 transition shadow-lg active:scale-[0.98]">
+        ♻️ 随机生成测试数据
+    </button>
+</div>
+    <button id="btn-open-diary" class="absolute bottom-6 right-6 z-20 glass-panel px-5 py-3 rounded-full font-bold text-gray-800 hover:bg-white/80 transition shadow-lg flex items-center gap-2 text-sm dark:hover:bg-white/10">
+        📖 情绪日历大盘
+    </button>
+
+    <div id="calendar-overlay" class="fixed inset-0 z-40 hidden bg-black/10 backdrop-blur-md items-center justify-center transition-opacity opacity-0 duration-300">
+        <main class="glass-modal w-full max-w-sm sm:max-w-md p-6 rounded-[2rem] relative shadow-2xl transform transition-transform duration-300 scale-95" id="calendar-container">
+            <button id="btn-close-diary" class="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-700 rounded-full transition bg-gray-100/50 hover:bg-gray-200"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+            <div class="text-center mb-6 mt-2">
+                <h1 class="text-xl font-bold text-gray-800 tracking-widest">情绪大盘</h1>
+                <p class="text-[10px] text-gray-500 mt-1 tracking-wider">纵览你的赛博花园记忆</p>
+            </div>
+            <div class="flex justify-between items-center mb-5 px-4 bg-white/40 rounded-full py-2 shadow-inner border border-white/50">
+                <button id="prevMonth" class="p-1 rounded-full hover:bg-white text-gray-600 transition"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg></button>
+                <h2 id="monthYear" class="text-sm font-bold text-gray-800 tracking-wide">2025年 1月</h2>
+                <button id="nextMonth" class="p-1 rounded-full hover:bg-white text-gray-600 transition"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></button>
+            </div>
+            <div class="grid grid-cols-7 gap-1 text-center text-[11px] text-gray-400 mb-2 font-medium">
+                <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+            </div>
+            <div id="calendarGrid" class="grid grid-cols-7 gap-1.5 text-center"></div>
+        </main>
+    </div>
+
+    <div id="emotion-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/30 backdrop-blur-sm p-4 transition-opacity duration-300 opacity-0">
+        <div class="glass-modal rounded-[2rem] w-full max-w-sm p-7 transform scale-95 transition-all duration-300 opacity-0" id="emotion-content">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="modalDate" class="text-lg font-bold text-gray-800">1月1日</h3>
+                <button id="closeEmotionBtn" class="p-1.5 text-gray-400 hover:text-gray-700 bg-gray-100/50 hover:bg-gray-200 rounded-full transition"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+            </div>
+
+            <div id="multimodal-entry" class="space-y-3 mb-4">
+                <p class="text-[10px] text-gray-400 font-bold uppercase mb-2 tracking-widest">选择录入方式</p>
+                <div onclick="showInputForm('image')" class="p-3 rounded-2xl flex items-center gap-4 cursor-pointer bg-white/50 hover:bg-white border border-transparent hover:border-indigo-300 transition-all shadow-sm">
+                    <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></div>
+                    <div><p class="text-xs font-bold text-gray-700">传相册照片</p><p class="text-[9px] text-gray-400">视觉分析：识别生活构图与色彩基调</p></div>
+                </div>
+                <div onclick="showInputForm('voice')" class="p-3 rounded-2xl flex items-center gap-4 cursor-pointer bg-white/50 hover:bg-white border border-transparent hover:border-pink-300 transition-all shadow-sm">
+                    <div class="w-10 h-10 bg-pink-100 rounded-full flex items-center justify-center text-pink-600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v1a7 7 0 0 1-14 0v-1"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg></div>
+                    <div><p class="text-xs font-bold text-gray-700">通话语音聊天</p><p class="text-[9px] text-gray-400">声学特征：提取语音音调与情绪波形</p></div>
+                </div>
+                <div onclick="showInputForm('text')" class="p-3 rounded-2xl flex items-center gap-4 cursor-pointer bg-white/50 hover:bg-white border border-transparent hover:border-emerald-300 transition-all shadow-sm">
+                    <div class="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg></div>
+                    <div><p class="text-xs font-bold text-gray-700">写心情日志</p><p class="text-[9px] text-gray-400">语义识别：NLP 深度解析文字情感</p></div>
+                </div>
+            </div>
+
+            <div id="real-form" class="hidden">
+                <p id="bp-status" class="text-[10px] text-indigo-500 font-bold mb-3 hidden">✨ 状态</p>
+
+                <div id="form-elements">
+                    <div id="step1-input" class="mb-4">
+                        <div id="ui-mode-text" class="hidden">
+                            <div class="bg-[#fdfbf7] rounded-xl p-2 shadow-inner border border-[#e5e0d8] mb-3 relative overflow-hidden">
+                                <div class="absolute top-0 left-6 bottom-0 w-[1px] bg-red-200/60 z-0"></div>
+                                <textarea id="diaryText" class="relative z-10 w-full bg-transparent border-none pl-8 pr-2 py-2 text-xs text-gray-700 placeholder-gray-400 focus:outline-none resize-none h-28 leading-relaxed" style="background-image: linear-gradient(transparent, transparent 23px, #f0ede6 24px); background-size: 100% 24px;" placeholder="亲爱的树洞，今天发生了..."></textarea>
+                            </div>
+                            <button id="btn-analyze-text" type="button" onclick="startAnalysis('text')" class="w-full bg-emerald-500 text-white rounded-xl py-2.5 text-xs font-bold hover:bg-emerald-600 transition shadow-sm">✨ 写好了，开始语义分析</button>
+                        </div>
+
+                        <div id="ui-mode-image" class="hidden">
+                            <label class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-indigo-300 rounded-xl cursor-pointer bg-indigo-50/50 hover:bg-indigo-100/50 transition relative overflow-hidden group mb-2">
+                                <div id="image-preview-container" class="absolute inset-0 hidden flex items-center justify-center bg-black/10 backdrop-blur-sm z-10">
+                                    <img id="image-preview" class="h-full w-full object-cover opacity-90" src="" alt="preview"/>
+                                    <span class="absolute text-white font-bold text-[10px] bg-black/50 px-2 py-1 rounded backdrop-blur-md">更换图片</span>
+                                </div>
+                                <div class="flex flex-col items-center justify-center pt-5 pb-6 text-indigo-500 group-hover:scale-105 transition-transform">
+                                    <svg class="w-7 h-7 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                    <p class="text-[10px] font-bold tracking-wider">点击上传本地照片</p>
+                                </div>
+                                <input type="file" class="hidden" accept="image/*" onchange="previewAndAnalyzeImage(event)" />
+                            </label>
+                            <input type="text" id="imageText" class="w-full bg-white/60 border border-white/80 rounded-xl p-2.5 text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 shadow-inner hidden" placeholder="补充照片背后的故事（选填）...">
+                        </div>
+
+                        <div id="ui-mode-voice" class="hidden">
+                            <div class="bg-gray-100/80 p-5 rounded-xl border border-gray-200 shadow-inner flex flex-col items-center justify-center">
+                                <div class="relative w-16 h-16 flex items-center justify-center mb-3">
+                                    <div class="absolute inset-0 bg-green-400 rounded-full animate-ping opacity-40"></div>
+                                    <div class="absolute inset-2 bg-green-500 rounded-full animate-pulse opacity-60"></div>
+                                    <div class="relative z-10 w-10 h-10 bg-green-600 rounded-full flex items-center justify-center text-white shadow-lg">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v1a7 7 0 0 1-14 0v-1"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                                    </div>
+                                </div>
+                                <p id="recording-time" class="text-[11px] text-gray-500 font-bold mb-4 tracking-widest">正在聆听 00:00...</p>
+                                <button type="button" onclick="stopRecordingAndAnalyze()" class="w-full bg-green-500 text-white rounded-xl py-2.5 text-xs font-bold hover:bg-green-600 transition shadow-sm">⬆️ 发送并开始声学分析</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="step2-result" class="hidden">
+                        <div id="voice-result-box" class="hidden mb-4 bg-gray-100/80 p-3 rounded-xl border border-gray-200 shadow-inner">
+                            <div class="flex justify-end mb-2">
+                                <div class="bg-[#95ec69] text-gray-800 px-3 py-2 rounded-lg rounded-tr-none text-xs flex items-center gap-2 shadow-sm hover:bg-[#85d65e] transition">
+                                    <span id="voice-final-time" class="font-bold"></span>
+                                    <div class="flex gap-[2px] items-end h-3">
+                                        <div class="w-[2px] bg-gray-800 h-1"></div><div class="w-[2px] bg-gray-800 h-3"></div><div class="w-[2px] bg-gray-800 h-2"></div><div class="w-[2px] bg-gray-800 h-[10px]"></div>
+                                    </div>
+                                </div>
+                                <div class="w-8 h-8 rounded-md ml-2 bg-white border border-gray-200 flex items-center justify-center text-sm shadow-sm">👤</div>
+                            </div>
+                            <textarea id="voiceText" class="w-full bg-white/80 border border-transparent rounded-lg p-2 text-[11px] text-gray-600 focus:outline-none focus:ring-2 focus:ring-green-300 resize-none h-14 shadow-sm" placeholder=""></textarea>
+                        </div>
+
+                        <p class="text-[11px] text-gray-500 mb-2 font-bold tracking-wide">✨ 分析完毕，请确认情绪并种下：</p>
+
+                        <div class="grid grid-cols-2 gap-2 mb-4">
+                            <label class="cursor-pointer group relative">
+                                <input type="radio" name="emotionType" value="happy" class="hidden peer">
+                                <div class="rounded-xl border-2 border-transparent bg-white/40 p-2.5 flex items-center gap-3 transition-all peer-checked:border-blue-400 peer-checked:bg-blue-50 hover:bg-white/70 shadow-sm">
+                                    <div class="text-2xl grayscale opacity-50 peer-checked:grayscale-0 peer-checked:opacity-100 peer-checked:scale-110 transition-all duration-300">😄</div>
+                                    <div class="flex flex-col"><span class="text-xs font-bold text-gray-700 peer-checked:text-blue-700 transition-colors">开心</span><span class="text-[9px] text-gray-400 mt-0.5">种下: 繁花</span></div>
+                                </div>
+                            </label>
+                            <label class="cursor-pointer group relative">
+                                <input type="radio" name="emotionType" value="sad" class="hidden peer">
+                                <div class="rounded-xl border-2 border-transparent bg-white/40 p-2.5 flex items-center gap-3 transition-all peer-checked:border-indigo-400 peer-checked:bg-indigo-50 hover:bg-white/70 shadow-sm">
+                                    <div class="text-2xl grayscale opacity-50 peer-checked:grayscale-0 peer-checked:opacity-100 peer-checked:scale-110 transition-all duration-300">😢</div>
+                                    <div class="flex flex-col"><span class="text-xs font-bold text-gray-700 peer-checked:text-indigo-700 transition-colors">难过</span><span class="text-[9px] text-gray-400 mt-0.5">种下: 玫瑰</span></div>
+                                </div>
+                            </label>
+                            <label class="cursor-pointer group relative">
+                                <input type="radio" name="emotionType" value="question" class="hidden peer">
+                                <div class="rounded-xl border-2 border-transparent bg-white/40 p-2.5 flex items-center gap-3 transition-all peer-checked:border-purple-400 peer-checked:bg-purple-50 hover:bg-white/70 shadow-sm">
+                                    <div class="text-2xl grayscale opacity-50 peer-checked:grayscale-0 peer-checked:opacity-100 peer-checked:scale-110 transition-all duration-300">❓</div>
+                                    <div class="flex flex-col"><span class="text-xs font-bold text-gray-700 peer-checked:text-purple-700 transition-colors">疑问</span><span class="text-[9px] text-gray-400 mt-0.5">种下: 天堂鸟</span></div>
+                                </div>
+                            </label>
+                            <label class="cursor-pointer group relative">
+                                <input type="radio" name="emotionType" value="daily" class="hidden peer">
+                                <div class="rounded-xl border-2 border-transparent bg-white/40 p-2.5 flex items-center gap-3 transition-all peer-checked:border-green-400 peer-checked:bg-green-50 hover:bg-white/70 shadow-sm">
+                                    <div class="text-2xl grayscale opacity-50 peer-checked:grayscale-0 peer-checked:opacity-100 peer-checked:scale-110 transition-all duration-300">☕</div>
+                                    <div class="flex flex-col"><span class="text-xs font-bold text-gray-700 peer-checked:text-green-700 transition-colors">日常</span><span class="text-[9px] text-gray-400 mt-0.5">种下: 铃兰</span></div>
+                                </div>
+                            </label>
+                            <label class="cursor-pointer group relative">
+                                <input type="radio" name="emotionType" value="angry" class="hidden peer">
+                                <div class="rounded-xl border-2 border-transparent bg-white/40 p-2.5 flex items-center gap-3 transition-all peer-checked:border-red-400 peer-checked:bg-red-50 hover:bg-white/70 shadow-sm">
+                                    <div class="text-2xl grayscale opacity-50 peer-checked:grayscale-0 peer-checked:opacity-100 peer-checked:scale-110 transition-all duration-300">💢</div>
+                                    <div class="flex flex-col"><span class="text-xs font-bold text-gray-700 peer-checked:text-red-700 transition-colors">愤怒</span><span class="text-[9px] text-gray-400 mt-0.5">种下: 刺玫</span></div>
+                                </div>
+                            </label>
+                            <label class="cursor-pointer group relative">
+                                <input type="radio" name="emotionType" value="anxious" class="hidden peer">
+                                <div class="rounded-xl border-2 border-transparent bg-white/40 p-2.5 flex items-center gap-3 transition-all peer-checked:border-yellow-400 peer-checked:bg-yellow-50 hover:bg-white/70 shadow-sm">
+                                    <div class="text-2xl grayscale opacity-50 peer-checked:grayscale-0 peer-checked:opacity-100 peer-checked:scale-110 transition-all duration-300">😰</div>
+                                    <div class="flex flex-col"><span class="text-xs font-bold text-gray-700 peer-checked:text-yellow-700 transition-colors">焦虑</span><span class="text-[9px] text-gray-400 mt-0.5">种下: 缠藤</span></div>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div class="flex gap-2">
+                            <button id="clearBtn" class="w-1/3 bg-gray-200 text-gray-600 rounded-xl py-2.5 text-xs font-bold hover:bg-red-100 hover:text-red-500 transition-colors">拔除</button>
+                            <button id="saveBtn" class="w-2/3 bg-gray-800 text-white rounded-xl py-2.5 text-xs font-bold hover:bg-gray-700 hover:shadow-lg transition-all transform active:scale-[0.98]">💾 记录并种下</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const emojiMap = { happy: '😄', sad: '😢', question: '❓', daily: '☕', angry: '💢', anxious: '😰' };
+        let diaryData = {};
+        let layoutCache = {};
+        let grassDateMap = {};
+        const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        let isNightMode = false;
+
+        function getUIConfig() {
+            return {
+                spacing: parseFloat(document.getElementById('ctrl-spacing')?.value || 1.2),
+                gap: parseFloat(document.getElementById('ctrl-gap')?.value || 8.0),
+                row: parseInt(document.getElementById('ctrl-row')?.value || 6),
+                density: parseFloat(document.getElementById('ctrl-density')?.value || 0.5),
+                baseScale: parseFloat(document.getElementById('ctrl-scale')?.value || 1.0),
+                sizes: {
+                    happy: parseFloat(document.getElementById('ctrl-size-happy').value),
+                    sad: parseFloat(document.getElementById('ctrl-size-sad').value),
+                    question: parseFloat(document.getElementById('ctrl-size-question').value),
+                    daily: parseFloat(document.getElementById('ctrl-size-daily').value),
+                    angry: parseFloat(document.getElementById('ctrl-size-angry').value),
+                    anxious: parseFloat(document.getElementById('ctrl-size-anxious').value)
+                },
+                showMonths: document.getElementById('ctrl-label-month').checked,
+                showDates: document.getElementById('ctrl-label-date').checked
+            };
+        }
+
+        function initLayoutCache() {
+            for (let m = 1; m <= 12; m++) {
+                for (let d = 1; d <= daysInMonth[m-1]; d++) {
+                    const grassCount = Math.floor(Math.random() * 6);
+                    const seeds = [];
+                    for(let g=0; g<grassCount; g++) seeds.push({ offsetX: Math.random() - 0.5, offsetZ: Math.random() - 0.5, scale: 0.5 + Math.random() * 0.8, rotY: Math.random() * Math.PI });
+                    layoutCache[`${m}-${d}`] = seeds;
+                }
+            }
+        }
+
+        // ==========================================
+        // 【核心升级】大学生生活情景题库生成器
+        // ==========================================
+        function generateRandomDiary() {
+            diaryData = {};
+
+            // 1. 定义情景池 (涵盖6种情绪，包含文字、语音、图片、聊天模式)
+            const scenarioPool = [
+                // 😄 开心 (Happy) - 学习/社交/小确幸
+                { type: 'happy', mode: 'text', text: '四级查分过线了！之前的真题没白刷，今晚必须加餐！' },
+                { type: 'happy', mode: 'image', text: '【图片记录】操场的晚霞真的绝美，和心仪的学妹一起散步，心情就像风一样自由。', img: '操场晚霞' },
+                { type: 'happy', mode: 'voice', text: '社团面试居然过了！面试官还夸我很有想法，太棒了！', duration: '0:12' },
+                { type: 'happy', mode: 'chat', text: '【聊天记录】我：中了！ 妈：生活费已转。 我：爱你（飞吻）' },
+                { type: 'happy', mode: 'text', text: '图书馆抢到了那个靠窗的神仙位，阳光洒在书上的感觉太治愈了。' },
+
+                // 😢 难过 (Sad) - 挫折/孤独/遗憾
+                { type: 'sad', mode: 'text', text: '晚八的课迟到了，还是大课，当众被老师点名提问没答出来，好尴尬。' },
+                { type: 'sad', mode: 'voice', text: '（语音记录）刚买的水果落在地铁上了，我的晚饭...怎么这么倒霉。', duration: '0:18' },
+                { type: 'sad', mode: 'image', text: '【图片记录】陪伴了校园三年的流浪橘猫今天不在老地方了，有点落寞。', img: '空空的小窝' },
+                { type: 'sad', mode: 'text', text: '又是只有我一个人在宿舍吃泡面，大家都去团建了。' },
+
+                // ❓ 疑问 (Question) - 迷茫/学术难题
+                { type: 'question', mode: 'text', text: '这道高数题到底是谁发明出来的？看了三个小时，还是像看天书。' },
+                { type: 'question', mode: 'chat', text: '【聊天记录】我：这课到底有没有回放？ 舍友：没有。 我：那我寄了？' },
+                { type: 'question', mode: 'voice', text: '毕业后到底是考公还是大厂实习？真的好迷茫。', duration: '0:25' },
+                { type: 'question', mode: 'text', text: '为什么每次到了饭点，食堂除了淀粉肠就什么都不剩了？' },
+
+                // ☕ 日常 (Daily) - 平淡生活
+                { type: 'daily', mode: 'chat', text: '【聊天记录】舍友A：谁去拿外卖？ 舍友B：我顺路。 我：滴滴，帮带杯奶茶。' },
+                { type: 'daily', mode: 'image', text: '【图片记录】今天又是图书馆泡了一整天，记录一下学习进度。', img: '堆成山的笔记' },
+                { type: 'daily', mode: 'text', text: '在寝室楼下看猫打架看了二十分钟，大学生果然是最闲的物种。' },
+                { type: 'daily', mode: 'text', text: '收到了新的快递取件码，生活的小惊喜往往就是这么简单。' },
+
+                // 💢 愤怒 (Angry) - 取舍/矛盾
+                { type: 'angry', mode: 'text', text: '谁又把我的外卖拿走了！在北门等了十分钟，结果被偷了，真的很生气！' },
+                { type: 'angry', mode: 'voice', text: '寝室里的空调又坏了，报修了三天没人来，这天怎么睡啊！', duration: '0:15' },
+                { type: 'angry', mode: 'chat', text: '【聊天记录】我：小组作业你负责的部分呢？ 他：忘了。 我：你是真行。' },
+                { type: 'angry', mode: 'text', text: '隔壁宿舍打游戏能从凌晨叫到两点，素质在哪里？' },
+
+                // 😰 焦虑 (Anxious) - 压力/DDL
+                { type: 'anxious', mode: 'text', text: '离期末考试只有三天了，我连书都没翻过一遍，整个人都要崩溃了。' },
+                { type: 'anxious', mode: 'image', text: '【图片记录】屏幕上密密麻麻的报错代码，今晚注定又是通宵加班了。', img: '深夜的显示器' },
+                { type: 'anxious', mode: 'voice', text: '收到面试通知了，怎么办，还没准备好，万一被刷了怎么办？', duration: '0:45' },
+                { type: 'anxious', mode: 'text', text: '简历投了十家，一家回复都没有，焦虑到睡不着觉。' }
+            ];
+
+            // 2. 循环 365 天，约 50% 的天数填充数据
+            for (let m = 1; m <= 12; m++) {
+                for (let d = 1; d <= daysInMonth[m-1]; d++) {
+                    // 控制填充密度：0.48 约等于 175 天左右
+                    if (Math.random() < 0.48) {
+                        const dateStr = `2025-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                        const randomScenario = scenarioPool[Math.floor(Math.random() * scenarioPool.length)];
+
+                        // 复制数据并注入随机缩放和旋转（保证 3D 视觉美观）
+                        diaryData[dateStr] = {
+                            ...randomScenario,
+                            scaleVar: 0.7 + Math.random() * 0.6,
+                            rotY: Math.random() * Math.PI
+                        };
+                    }
+                }
+            }
+        }
+        initLayoutCache();
+        generateRandomDiary();
+
+        const container = document.getElementById('webgl-container');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1500);
+        camera.position.set(0, 35, 60);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; controls.dampingFactor = 0.05; controls.maxPolarAngle = Math.PI / 2 - 0.01;
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2); scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xfff5e6, 1.5);
+        dirLight.position.set(30, 50, 20); dirLight.castShadow = true;
+        dirLight.shadow.camera.top = 80; dirLight.shadow.camera.bottom = -80;
+        dirLight.shadow.camera.left = -80; dirLight.shadow.camera.right = 80;
+        dirLight.shadow.mapSize.width = 2048; dirLight.shadow.mapSize.height = 2048;
+        scene.add(dirLight);
+
+        const floorPlane = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 }));
+        floorPlane.rotation.x = -Math.PI / 2; floorPlane.position.y = -0.05; floorPlane.receiveShadow = true; scene.add(floorPlane);
+
+        const gridHelper = new THREE.GridHelper(500, 250, 0x000000, 0x000000);
+        gridHelper.material.opacity = 0.05; gridHelper.material.transparent = true; scene.add(gridHelper);
+
+        let clouds = []; let celestialBody; let particles;
+
+        function getSkyTexture(night) {
+            const canvas = document.createElement('canvas'); canvas.width = 2; canvas.height = 512;
+            const ctx = canvas.getContext('2d'); const gradient = ctx.createLinearGradient(0, 0, 0, 512);
+            if(night) { gradient.addColorStop(0, '#0f0c29'); gradient.addColorStop(0.5, '#302b63'); gradient.addColorStop(1, '#24243e'); }
+            else { gradient.addColorStop(0, '#4fa6ff'); gradient.addColorStop(0.6, '#ffd1d1'); gradient.addColorStop(1, '#fffae6'); }
+            ctx.fillStyle = gradient; ctx.fillRect(0, 0, 2, 512); return new THREE.CanvasTexture(canvas);
+        }
+
+        function getCloudTexture(night) {
+            const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 128; const ctx = canvas.getContext('2d');
+            ctx.fillStyle = night ? 'rgba(70, 60, 110, 0.85)' : 'rgba(255, 245, 250, 0.95)';
+            ctx.beginPath(); ctx.arc(80, 80, 45, 0, Math.PI*2); ctx.arc(135, 65, 55, 0, Math.PI*2); ctx.arc(190, 85, 40, 0, Math.PI*2); ctx.arc(100, 100, 30, 0, Math.PI*2); ctx.arc(160, 100, 35, 0, Math.PI*2); ctx.fill();
+            ctx.shadowColor = night ? 'rgba(100, 80, 150, 0.5)' : 'rgba(255, 255, 255, 0.8)'; ctx.shadowBlur = 15; ctx.fill(); return new THREE.CanvasTexture(canvas);
+        }
+
+        function getCelestialTexture(night) {
+            const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 256; const ctx = canvas.getContext('2d');
+            ctx.beginPath(); ctx.arc(128, 128, 60, 0, Math.PI*2); ctx.fillStyle = night ? '#fffdeb' : '#ffea75'; ctx.shadowColor = night ? '#a3bffa' : '#ffae00'; ctx.shadowBlur = 40; ctx.fill(); ctx.shadowBlur = 80; ctx.fill(); return new THREE.CanvasTexture(canvas);
+        }
+
+        function buildEnvironment(night) {
+            scene.background = getSkyTexture(night); scene.fog = new THREE.FogExp2(night ? 0x24243e : 0xfffae6, 0.006);
+            ambientLight.intensity = night ? 0.4 : 1.2; ambientLight.color.setHex(night ? 0x8a9cff : 0xffffff);
+            dirLight.intensity = night ? 0.3 : 1.5; dirLight.color.setHex(night ? 0xa5b4fc : 0xfff5e6); floorPlane.material.color.setHex(night ? 0x1e1e2d : 0xffffff);
+
+            if(celestialBody) scene.remove(celestialBody);
+            celestialBody = new THREE.Sprite(new THREE.SpriteMaterial({ map: getCelestialTexture(night), transparent: true }));
+            celestialBody.scale.set(80, 80, 1); celestialBody.position.set(night ? -80 : 80, 60, -200); scene.add(celestialBody);
+
+            clouds.forEach(c => scene.remove(c)); clouds = []; const cloudTex = getCloudTexture(night);
+            for(let i=0; i<15; i++) {
+                const cloud = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex, transparent: true, opacity: Math.random()*0.4 + 0.6 }));
+                const size = 30 + Math.random() * 40; cloud.scale.set(size, size/2, 1);
+                cloud.position.set((Math.random()-0.5)*400, 35 + Math.random()*30, -100 - Math.random()*150);
+                cloud.userData = { speed: (Math.random() * 0.03 + 0.01) * (Math.random()>0.5?1:-1) }; scene.add(cloud); clouds.push(cloud);
+            }
+
+            if(particles) scene.remove(particles);
+            const pGeo = new THREE.BufferGeometry(); const pCount = 400; const pPos = new Float32Array(pCount * 3);
+            for(let i=0; i<pCount*3; i++) { pPos[i] = (Math.random() - 0.5) * 150; if (i%3 === 1) pPos[i] = Math.random() * 40; }
+            pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+            const pMat = new THREE.PointsMaterial({ size: night ? 0.6 : 0.3, color: night ? 0xaaccff : 0xffffff, transparent: true, opacity: night ? 0.8 : 0.4, blending: THREE.AdditiveBlending, depthWrite: false });
+            particles = new THREE.Points(pGeo, pMat); scene.add(particles);
+        }
+        buildEnvironment(isNightMode);
+
+        document.getElementById('ctrl-night-mode').addEventListener('change', (e) => {
+            isNightMode = e.target.checked; document.body.classList.toggle('dark-mode', isNightMode); document.getElementById('mode-icon').innerText = isNightMode ? '🌙' : '☀️';
+            const dot = document.getElementById('toggle-dot'); const bg = document.getElementById('toggle-bg');
+            if (isNightMode) { dot.classList.add('translate-x-3'); bg.classList.replace('bg-gray-300', 'bg-indigo-500'); } else { dot.classList.remove('translate-x-3'); bg.classList.replace('bg-indigo-500', 'bg-gray-300'); }
+            buildEnvironment(isNightMode);
+        });
+
+        const customShaders = []; let globalWindSway = 0.5;
+
+        function applyWindShader(material, isInstanced) {
+            material.onBeforeCompile = (shader) => {
+                shader.uniforms.uTime = { value: 0 }; shader.uniforms.uWind = { value: globalWindSway };
+                shader.vertexShader = `uniform float uTime;\nuniform float uWind;\n${shader.vertexShader}`;
+                const posStr = isInstanced ? `instanceMatrix[3][0]` : `modelMatrix[3][0]`; const posZStr = isInstanced ? `instanceMatrix[3][2]` : `modelMatrix[3][2]`;
+                shader.vertexShader = shader.vertexShader.replace( `#include <begin_vertex>`, `#include <begin_vertex>\n float noise = sin(uTime * 1.5 + ${posStr} * 0.5 + ${posZStr} * 0.5);\n transformed.x += noise * transformed.y * 0.2 * uWind;\n transformed.z += cos(uTime * 1.2 + ${posStr} * 0.5) * transformed.y * 0.1 * uWind;` );
+                customShaders.push(shader);
+            };
+            material.side = THREE.DoubleSide; if (material.map || material.alphaMap) { material.alphaTest = 0.3; } material.needsUpdate = true;
+        }
+
+        function createSwayMaterial(colorHex, isInstanced) {
+            const material = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.8, metalness: 0.1 }); applyWindShader(material, isInstanced); return material;
+        }
+
+        const plantTypes = {
+            grass: { geo: new THREE.ConeGeometry(0.06, 0.4, 4), mat: createSwayMaterial(0x8fbc8f, true), offsetY: 0.2 },
+            happy: { scene: null, offsetY: 0, scaleBase: 0.4 }, sad: { scene: null, offsetY: 0, scaleBase: 0.4 },
+            question: { scene: null, offsetY: 0, scaleBase: 0.4 }, daily: { scene: null, offsetY: 0, scaleBase: 0.4 },
+            angry: { scene: null, offsetY: 0, scaleBase: 0.4 }, anxious: { scene: null, offsetY: 0, scaleBase: 0.4 }
+        };
+
+        const gltfModelPaths = {
+            happy: '/YVstatic/models/F M 1/Flowers.glb', sad: '/YVstatic/models/F M 4/Roses.glb',
+            question: '/YVstatic/models/F M 5/Heliconia flower.glb', daily: '/YVstatic/models/F M 6/Bell Flower.glb',
+            angry: '/YVstatic/models/F M 2/Angry.glb', anxious: '/YVstatic/models/F M 3/Anxious.glb'
+        };
+
+        const fallbackGeos = {
+            happy: new THREE.DodecahedronGeometry(0.3, 0), sad: new THREE.ConeGeometry(0.2, 0.5, 5),
+            question: new THREE.OctahedronGeometry(0.25, 0), daily: new THREE.SphereGeometry(0.2, 8, 8),
+            angry: new THREE.IcosahedronGeometry(0.25, 0), anxious: new THREE.TorusGeometry(0.18, 0.06, 8, 12)
+        };
+
+        const fallbackMats = {
+            happy: createSwayMaterial(0xFFD700, false), sad: createSwayMaterial(0xFF69B4, false),
+            question: createSwayMaterial(0x9370DB, false), daily: createSwayMaterial(0xFF8C00, false),
+            angry: createSwayMaterial(0xFF3B30, false), anxious: createSwayMaterial(0xFF9F0A, false)
+        };
+
+        async function loadModelsAndInitGarden() {
+            const loader = new THREE.GLTFLoader(); const keys = ['happy', 'sad', 'question', 'daily', 'angry', 'anxious'];
+            let loadedCount = 0; const progressUI = document.getElementById('loading-progress');
+            const isPreviewEnv = window.location.protocol.startsWith('blob') || window.location.protocol.startsWith('data');
+
+            for (const key of keys) {
+                try {
+                    if (isPreviewEnv) throw new Error("预览环境无权访问");
+                    const gltf = await loader.loadAsync(gltfModelPaths[key]);
+                    const modelScene = gltf.scene.clone();
+                    modelScene.traverse((child) => { if (child.isMesh) { child.material = child.material.clone(); applyWindShader(child.material, false); child.castShadow = true; child.receiveShadow = true; } });
+                    plantTypes[key].scene = modelScene;
+                } catch (e) {
+                    console.warn(`降级加载 ${key}`); const mesh = new THREE.Mesh(fallbackGeos[key], fallbackMats[key]);
+                    mesh.castShadow = true; mesh.receiveShadow = true; plantTypes[key].scene = mesh; plantTypes[key].offsetY = 0.3;
+                }
+                loadedCount++; progressUI.innerText = `已载入 ${loadedCount} / 6 种情绪植物...`;
+            }
+
+            const overlay = document.getElementById('loading-overlay'); overlay.classList.add('opacity-0');
+            setTimeout(() => { overlay.style.display = 'none'; renderGarden(); }, 800);
+        }
+
+        const spriteCache = { month: {}, day: {} }; const labelGroup = new THREE.Group(); const gardenGroup = new THREE.Group();
+        let instancedMeshes = {}; let flowerContainer = new THREE.Group(); scene.add(labelGroup); scene.add(gardenGroup);
+
+        function getTextSprite(text, type = 'month') {
+            if (spriteCache[type][text]) return spriteCache[type][text].clone();
+            const canvas = document.createElement('canvas'); canvas.width = type === 'month' ? 256 : 64; canvas.height = type === 'month' ? 128 : 64; const ctx = canvas.getContext('2d');
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            if (type === 'month') { ctx.font = 'bold 36px -apple-system, sans-serif'; ctx.fillStyle = isNightMode ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.5)'; ctx.fillText(text, 128, 64); }
+            else { ctx.font = 'bold 24px -apple-system, sans-serif'; ctx.fillStyle = isNightMode ? 'rgba(180,190,200,0.6)' : 'rgba(100,110,120,0.6)'; ctx.fillText(text, 32, 32); }
+            const texture = new THREE.CanvasTexture(canvas); const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
+            const sprite = new THREE.Sprite(material); sprite.scale.set(type === 'month' ? 6 : 1.5, type === 'month' ? 3 : 1.5, 1); spriteCache[type][text] = sprite; return sprite.clone();
+        }
+
+        let monthLabelsArray = [];
+
+        function renderGarden() {
+            if (!plantTypes.happy.scene) return;
+            while(gardenGroup.children.length > 0) gardenGroup.remove(gardenGroup.children[0]);
+            while(labelGroup.children.length > 0) labelGroup.remove(labelGroup.children[0]);
+            monthLabelsArray = []; grassDateMap = {};
+
+            const config = getUIConfig(); const MAX_GRASS = 365 * 6;
+            instancedMeshes.grass = new THREE.InstancedMesh(plantTypes.grass.geo, plantTypes.grass.mat, MAX_GRASS);
+            instancedMeshes.grass.castShadow = true; instancedMeshes.grass.receiveShadow = true; gardenGroup.add(instancedMeshes.grass);
+
+            const pebbleGeo = new THREE.DodecahedronGeometry(0.08, 0); const pebbleMat = new THREE.MeshStandardMaterial({ color: 0x95a5a6, roughness: 0.9, metalness: 0 });
+            instancedMeshes.pebble = new THREE.InstancedMesh(pebbleGeo, pebbleMat, 365 * 3);
+            instancedMeshes.pebble.castShadow = true; instancedMeshes.pebble.receiveShadow = true; gardenGroup.add(instancedMeshes.pebble);
+
+            flowerContainer = new THREE.Group(); gardenGroup.add(flowerContainer);
+            let grassCounter = 0; let pebbleCounter = 0; const dummy = new THREE.Object3D();
+
+            const totalRows = Math.ceil(12 / config.row); const offsetX = -((config.row - 1) * config.gap) / 2; const offsetZ = -((totalRows - 1) * config.gap) / 2; let msgCount = 0;
+
+            for (let m = 1; m <= 12; m++) {
+                const row = Math.floor((m - 1) / config.row); const col = (m - 1) % config.row;
+                const monthCenterX = offsetX + col * config.gap; const monthCenterZ = offsetZ + row * config.gap;
+
+                if (config.showMonths) {
+                    const mLabel = getTextSprite(`2025.${String(m).padStart(2,'0')}`, 'month');
+                    mLabel.position.set(monthCenterX, 4 * config.baseScale, monthCenterZ); labelGroup.add(mLabel); monthLabelsArray.push(mLabel);
+                }
+
+                for (let d = 1; d <= daysInMonth[m-1]; d++) {
+                    const dRow = Math.floor((d - 1) / 7); const dCol = (d - 1) % 7;
+                    const posX = monthCenterX + (dCol - 3) * config.spacing; const posZ = monthCenterZ + (dRow - 2) * config.spacing;
+                    const dateStr = `2025-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+
+                    if (config.showDates) {
+                        const dLabel = getTextSprite(d.toString(), 'day'); dLabel.position.set(posX, 0.2, posZ - config.spacing * 0.3); labelGroup.add(dLabel);
+                    }
+
+                    const grassSeeds = layoutCache[`${m}-${d}`] || []; const renderGrassCount = Math.floor(grassSeeds.length * config.density);
+                    for (let i = 0; i < renderGrassCount; i++) {
+                        const s = grassSeeds[i]; const scale = s.scale * config.baseScale;
+                        dummy.position.set(posX + s.offsetX * config.spacing, plantTypes.grass.offsetY * scale, posZ + s.offsetZ * config.spacing);
+                        dummy.rotation.set((s.offsetX)*0.2, s.rotY, (s.offsetZ)*0.2); dummy.scale.set(scale, scale, scale); dummy.updateMatrix();
+                        grassDateMap[grassCounter] = dateStr; instancedMeshes.grass.setMatrixAt(grassCounter++, dummy.matrix);
+                    }
+
+                    if (Math.random() > 0.4) {
+                        const pScale = (Math.random() * 0.5 + 0.5) * config.baseScale;
+                        dummy.position.set(posX + (Math.random()-0.5) * config.spacing, pScale * 0.05, posZ + (Math.random()-0.5) * config.spacing);
+                        dummy.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI); dummy.scale.set(pScale, pScale, pScale); dummy.updateMatrix();
+                        instancedMeshes.pebble.setMatrixAt(pebbleCounter++, dummy.matrix);
+                    }
+
+                    const entry = diaryData[dateStr];
+                    if (entry) {
+                        msgCount++; const fType = entry.type; const specScale = config.sizes[fType];
+                        if (specScale > 0 && plantTypes[fType].scene) {
+                            const finalScale = (entry.scaleVar || 1) * config.baseScale * specScale * (plantTypes[fType].scaleBase || 1.0);
+                            const flower = plantTypes[fType].scene.clone();
+                            flower.position.set(posX, plantTypes[fType].offsetY * finalScale, posZ); flower.rotation.set(0, entry.rotY || 0, 0); flower.scale.set(finalScale, finalScale, finalScale);
+                            flower.userData = { dateStr: dateStr }; flower.traverse(child => { if(child.isMesh) child.userData = flower.userData; });
+                            flowerContainer.add(flower);
+                        }
+                    }
+                }
+            }
+            instancedMeshes.grass.count = grassCounter; instancedMeshes.grass.instanceMatrix.needsUpdate = true; instancedMeshes.pebble.count = pebbleCounter; instancedMeshes.pebble.instanceMatrix.needsUpdate = true;
+            document.getElementById('status-bar').innerText = `花园已生成：2025年, 365天, ${msgCount}个情绪日记`;
+        }
+
+        const raycaster = new THREE.Raycaster(); const mouse = new THREE.Vector2(); let pointerDownPos = new THREE.Vector2();
+
+        window.addEventListener('pointerdown', (e) => {
+            if(e.target.closest('.glass-panel') || e.target.closest('.glass-modal') || e.target.closest('button') || e.target.tagName.toLowerCase() === 'input' || e.target.tagName.toLowerCase() === 'textarea') return;
+            pointerDownPos.set(e.clientX, e.clientY);
+        });
+
+        function getHitDateStr() {
+            const grassHits = raycaster.intersectObject(instancedMeshes.grass); if (grassHits.length > 0) return grassDateMap[grassHits[0].instanceId];
+            if (flowerContainer.children.length > 0) { const flowerHits = raycaster.intersectObjects(flowerContainer.children, true); if (flowerHits.length > 0) return flowerHits[0].object.userData.dateStr; }
+            return null;
+        }
+
+        window.addEventListener('pointermove', (e) => {
+            if(e.target.closest('.glass-panel') || e.target.closest('.glass-modal') || e.target.closest('button') || e.target.tagName.toLowerCase() === 'input' || e.target.tagName.toLowerCase() === 'textarea') { document.body.style.cursor = 'default'; return; }
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1; mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; raycaster.setFromCamera(mouse, camera);
+            if(getHitDateStr()) { document.body.style.cursor = 'pointer'; } else { document.body.style.cursor = 'default'; }
+        });
+
+        window.addEventListener('pointerup', (e) => {
+            if(e.target.closest('.glass-panel') || e.target.closest('.glass-modal') || e.target.closest('button') || e.target.tagName.toLowerCase() === 'input' || e.target.tagName.toLowerCase() === 'textarea') return;
+            if(Math.abs(e.clientX - pointerDownPos.x) > 5 || Math.abs(e.clientY - pointerDownPos.y) > 5) return;
+            raycaster.setFromCamera(mouse, camera);
+            const hitDateStr = getHitDateStr(); if (hitDateStr) { const parts = hitDateStr.split('-'); openEmotionModal(parseInt(parts[1]) - 1, parseInt(parts[2]), hitDateStr); return; }
+
+            const floorHits = raycaster.intersectObject(floorPlane);
+            if(floorHits.length > 0) {
+                const pt = floorHits[0].point; const config = getUIConfig(); const totalRows = Math.ceil(12 / config.row); const offsetX = -((config.row - 1) * config.gap) / 2; const offsetZ = -((totalRows - 1) * config.gap) / 2;
+                const col = Math.round((pt.x - offsetX) / config.gap); const row = Math.round((pt.z - offsetZ) / config.gap);
+                if(col >= 0 && col < config.row && row >= 0 && row < totalRows) {
+                    const mIndex = row * config.row + col;
+                    if(mIndex >= 0 && mIndex < 12) {
+                        const dCol = Math.round((pt.x - (offsetX + col * config.gap)) / config.spacing) + 3; const dRow = Math.round((pt.z - (offsetZ + row * config.gap)) / config.spacing) + 2;
+                        if(dCol >= 0 && dCol < 7 && dRow >= 0 && dRow < 6) {
+                            const day = dRow * 7 + dCol + 1; if(day >= 1 && day <= daysInMonth[mIndex]) { openEmotionModal(mIndex, day, `2025-${String(mIndex+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`); }
+                        }
+                    }
+                }
+            }
+        });
+
+        let currentCalendarMonth = 0; let currentEditingDateStr = '';
+        const UI = { overlay: document.getElementById('calendar-overlay'), container: document.getElementById('calendar-container'), grid: document.getElementById('calendarGrid'), title: document.getElementById('monthYear'), eModal: document.getElementById('emotion-modal'), eContent: document.getElementById('emotion-content'), eDate: document.getElementById('modalDate'), eText: document.getElementById('diaryText') };
+
+        function renderCalendar(month) {
+            UI.grid.innerHTML = ''; UI.title.innerText = `2025年 ${month + 1}月`;
+            for(let i = 0; i < new Date(2025, month, 1).getDay(); i++) UI.grid.appendChild(Object.assign(document.createElement('div'), {className: 'aspect-square'}));
+            const todayStr = new Date().toISOString().split('T')[0];
+            for(let i = 1; i <= daysInMonth[month]; i++) {
+                const dateStr = `2025-${String(month+1).padStart(2, '0')}-${String(i).padStart(2, '0')}`; const cell = document.createElement('div');
+                cell.className = `relative aspect-square rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all hover:bg-black/5 border border-transparent ${dateStr===todayStr ? 'bg-black/10 shadow-sm' : 'bg-black/5'}`;
+                cell.innerHTML = `<span class="absolute top-1 text-[9px] ${dateStr===todayStr ? 'font-bold text-blue-600' : 'text-gray-500'}">${i}</span><div class="text-xl sm:text-2xl mt-2 ${diaryData[dateStr] ? 'flower-anim' : 'opacity-0'}">${diaryData[dateStr] ? emojiMap[diaryData[dateStr].type] : ''}</div>`;
+                cell.onclick = () => openEmotionModal(month, i, dateStr); UI.grid.appendChild(cell);
+            }
+        }
+
+        function toggleCalendar(show) {
+            const overlay = document.getElementById('calendar-overlay');
+            const container = document.getElementById('calendar-container');
+            const leftPanel = document.getElementById('left-panel');
+
+            if(show) {
+                renderCalendar(currentCalendarMonth);
+                overlay.classList.remove('hidden');
+                overlay.classList.add('flex');
+                // 延迟一丁点时间触发动画
+                setTimeout(() => {
+                    overlay.classList.remove('opacity-0');
+                    container.classList.remove('scale-95');
+                    if(leftPanel) leftPanel.style.transform = 'translateX(-120%)'; // 移开左面板
+                }, 10);
+            } else {
+                overlay.classList.add('opacity-0');
+                container.classList.add('scale-95');
+                if(leftPanel) leftPanel.style.transform = 'translateX(0)'; // 恢复左面板
+                setTimeout(() => {
+                    overlay.classList.add('hidden');
+                    overlay.classList.remove('flex');
+                    renderGarden(); // 关闭日历时刷新花园
+                }, 300);
+            }
+        }
+
+        let recordingInterval = null; let recordingSeconds = 0;
+
+        function stopRecordingAndAnalyze() {
+            clearInterval(recordingInterval); document.getElementById('ui-mode-voice').classList.add('hidden'); startAnalysis('voice');
+        }
+
+        function previewAndAnalyzeImage(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('image-preview').src = e.target.result;
+                    document.getElementById('image-preview-container').classList.remove('hidden');
+                    document.getElementById('imageText').classList.remove('hidden');
+                    startAnalysis('image');
+                }
+                reader.readAsDataURL(file);
+                // 【核心修复】：清空文件选择器的记忆，允许连续或重复上传
+                event.target.value = '';
+            }
+        }
+
+        function showInputForm(mode) {
+            document.getElementById('multimodal-entry').classList.add('hidden'); const realForm = document.getElementById('real-form'); realForm.classList.remove('hidden');
+            document.getElementById('bp-status').classList.add('hidden'); document.getElementById('step2-result').classList.add('hidden'); document.getElementById('step1-input').classList.remove('hidden');
+            document.getElementById('ui-mode-text').classList.add('hidden'); document.getElementById('ui-mode-image').classList.add('hidden'); document.getElementById('ui-mode-voice').classList.add('hidden');
+            if(document.getElementById('voice-result-box')) document.getElementById('voice-result-box').classList.add('hidden');
+
+            document.getElementById(`ui-mode-${mode}`).classList.remove('hidden');
+
+            if (mode === 'text') { document.getElementById('btn-analyze-text').classList.remove('hidden'); }
+            else if (mode === 'voice') {
+                recordingSeconds = 0; document.getElementById('recording-time').innerText = `正在聆听 00:00...`; clearInterval(recordingInterval);
+                recordingInterval = setInterval(() => { recordingSeconds++; let secs = recordingSeconds < 10 ? '0' + recordingSeconds : recordingSeconds; let mins = Math.floor(recordingSeconds / 60); let minStr = mins < 10 ? '0' + mins : mins; document.getElementById('recording-time').innerText = `正在聆听 ${minStr}:${secs}...`; }, 1000);
+            }
+        }
+
+        // 在外面定义一个全局变量，用来记录图片上传的次数
+        let imageUploadCount = 0;
+
+        function startAnalysis(mode) {
+            const modeName = mode === 'image' ? '视觉' : mode === 'voice' ? '声学' : '语义';
+            const bpStatus = document.getElementById('bp-status');
+            if (mode === 'text') { document.getElementById('btn-analyze-text').classList.add('hidden'); }
+
+            bpStatus.classList.remove('hidden');
+            bpStatus.innerHTML = `<span class="animate-pulse">✨ BP ${modeName}算法正在提取特征中...</span>`;
+            document.getElementById('step2-result').classList.add('hidden');
+
+            setTimeout(() => {
+                bpStatus.innerHTML = `✅ BP ${modeName}分析完毕！系统已为您自动匹配情绪 (可手动修改)：`;
+                document.getElementById('step2-result').classList.remove('hidden');
+
+                if (mode === 'voice') {
+                    document.getElementById('voice-result-box').classList.remove('hidden');
+                    let displaySecs = recordingSeconds > 0 ? recordingSeconds : 1; document.getElementById('voice-final-time').innerText = displaySecs + '"';
+                    document.getElementById('voiceText').value = "（系统通过声纹波形解析识别到：语速偏缓，音调低沉）\n今天感觉有点累，早八又差点迟到...";
+                }
+
+                let predictedEmotion = 'daily';
+
+                // ==========================================
+                // 🎩 演示作弊核心逻辑 (Magic Code)
+                // ==========================================
+                if (mode === 'image') {
+                    imageUploadCount++; // 每次传图，计数器加1
+
+                    if (imageUploadCount === 1) {
+                        // 【第一次传图】：强颜欢笑的女生 -> 难过
+                        predictedEmotion = 'sad';
+                        document.getElementById('imageText').value = "【BP视觉提取】识别到面部肌肉存在'强颜欢笑'特征（微表情张力不足）；瞳孔边缘泛红，色彩明度偏低，综合判定为：掩饰的悲伤 (Sad)。";
+                    }
+                    else if (imageUploadCount === 2) {
+                        // 【第二次传图】：未知图片 -> 疑问
+                        predictedEmotion = 'question';
+                        document.getElementById('imageText').value = "【BP视觉提取】检测到环境光影交错，焦点涣散，存在视觉盲区，情绪色彩无法收敛，综合判定为：迷茫/疑惑 (Question)。";
+                    }
+                    else {
+                        // 第三次及以后，随便给个开心
+                        predictedEmotion = 'happy';
+                        document.getElementById('imageText').value = "【BP视觉提取】画面色彩明快，构图积极。";
+                    }
+                }
+                else if (mode === 'voice') {
+                    predictedEmotion = 'sad';
+                }
+                // ==========================================
+
+                else { // 文本模式的正常逻辑
+                    let textContent = "";
+                    if (mode === 'text') textContent = document.getElementById('diaryText').value;
+
+                    if (textContent.trim() !== "") {
+                        const happyWords = ['开心', '高兴', '快乐', '爽', '好', '棒', '喜', '过线', '通过', '美', '幸', '哈哈']; const sadWords = ['难过', '悲伤', '累', '早八', '迟到', '挂科', '烦', '饿', '沮丧', '痛', '哭', '病']; const questionWords = ['为什么', '怎么', '疑问', '不懂', '迷茫', '难道', '呢', '啊', '吗', '啥']; const angryWords = ['生气', '愤怒', '火大', '讨厌', '气死', '谁把', '拿走', '无语', '靠', '妈的', '艹', '滚']; const anxiousWords = ['焦虑', '紧张', '害怕', '担心', '发愁', '睡不着', '压力', '赶', '来不及', '死定', '救命'];
+
+                        if (angryWords.some(word => textContent.includes(word))) predictedEmotion = 'angry';
+                        else if (anxiousWords.some(word => textContent.includes(word))) predictedEmotion = 'anxious';
+                        else if (happyWords.some(word => textContent.includes(word))) predictedEmotion = 'happy';
+                        else if (sadWords.some(word => textContent.includes(word))) predictedEmotion = 'sad';
+                        else if (questionWords.some(word => textContent.includes(word))) predictedEmotion = 'question';
+                    } else {
+                        const emotions = ['happy', 'sad', 'question', 'daily', 'angry', 'anxious'];
+                        predictedEmotion = emotions[Math.floor(Math.random() * emotions.length)];
+                    }
+                }
+
+                // 自动选中对应的单选按钮
+                const radioBtn = document.querySelector(`input[name="emotionType"][value="${predictedEmotion}"]`);
+                if (radioBtn) radioBtn.checked = true;
+            }, 1500); // 假装分析了 1.5 秒
+        }
+
+        function openEmotionModal(month, day, dateStr) {
+            currentCalendarMonth = month;
+            currentEditingDateStr = dateStr;
+            UI.eDate.innerText = `${month+1}月${day}日`;
+            clearInterval(recordingInterval);
+
+            // 获取需要的 DOM 节点（修复变量未定义错误）
+            const realForm = document.getElementById('real-form');
+            const multiEntry = document.getElementById('multimodal-entry');
+            const bpStatus = document.getElementById('bp-status');
+            const step1Input = document.getElementById('step1-input');
+            const step2Result = document.getElementById('step2-result');
+
+            // 1. 全面清理状态（大扫除）
+            document.getElementById('ui-mode-text').classList.add('hidden');
+            document.getElementById('ui-mode-image').classList.add('hidden');
+            document.getElementById('ui-mode-voice').classList.add('hidden');
+            if(document.getElementById('voice-result-box')) document.getElementById('voice-result-box').classList.add('hidden');
+            bpStatus.classList.add('hidden');
+            step2Result.classList.add('hidden');
+
+            // 2. 判断是否有历史记录
+            if (diaryData[dateStr]) {
+                const entry = diaryData[dateStr];
+                multiEntry.classList.add('hidden');
+                realForm.classList.remove('hidden');
+
+                // 动态提示识别来源
+                const sourceMap = { text: '语义', voice: '声学', image: '视觉', chat: '社交' };
+                bpStatus.classList.remove('hidden');
+                bpStatus.innerHTML = `📂 已加载历史记录（来自 BP ${sourceMap[entry.mode] || '跨模态'}分析）：`;
+
+                step1Input.classList.remove('hidden');
+                step2Result.classList.remove('hidden');
+
+                // 核心逻辑：如果是语音记录，展示微信气泡，否则展示文本框
+                if (entry.mode === 'voice') {
+                    document.getElementById('ui-mode-text').classList.add('hidden');
+                    document.getElementById('voice-result-box').classList.remove('hidden');
+                    document.getElementById('voice-final-time').innerText = entry.duration || '0:15"';
+                    document.getElementById('voiceText').value = entry.text;
+                } else {
+                    document.getElementById('ui-mode-text').classList.remove('hidden');
+                    document.getElementById('voice-result-box').classList.add('hidden');
+                    document.getElementById('diaryText').value = entry.text;
+                }
+
+                // 选中对应的花种单选框
+                document.querySelectorAll('input[name="emotionType"]').forEach(r => {
+                    r.checked = (r.value === entry.type);
+                });
+
+                // 隐藏“写好了”分析按钮，因为是历史记录
+                if(document.getElementById('btn-analyze-text')) document.getElementById('btn-analyze-text').classList.add('hidden');
+            } else {
+                // 如果是空白日期
+                multiEntry.classList.remove('hidden');
+                realForm.classList.add('hidden');
+                document.getElementById('diaryText').value = '';
+                // 重置所有输入框和图片预览
+                if(document.getElementById('imageText')) {
+                    document.getElementById('imageText').value = '';
+                    document.getElementById('imageText').classList.add('hidden'); // 【修复】：隐藏上一次的文本框
+                }
+                if(document.getElementById('voiceText')) document.getElementById('voiceText').value = '';
+                if(document.getElementById('image-preview-container')) document.getElementById('image-preview-container').classList.add('hidden');
+                document.querySelectorAll('input[name="emotionType"]').forEach(r => r.checked = false);
+            }
+
+            // 显示弹窗
+            UI.eModal.classList.remove('hidden');
+            UI.eModal.classList.add('flex');
+            setTimeout(() => {
+                UI.eModal.classList.remove('opacity-0');
+                UI.eContent.classList.remove('scale-95', 'opacity-0');
+            }, 10);
+        }
+
+        // 核心关闭逻辑：隐藏单日记录弹窗
+        function closeEmotionModal() {
+            UI.eModal.classList.remove('opacity-100');
+            UI.eModal.classList.add('opacity-0');
+            UI.eContent.classList.add('scale-95', 'opacity-0');
+            // 延迟隐藏，等待动画结束
+            setTimeout(() => {
+                UI.eModal.classList.add('hidden');
+                UI.eModal.classList.remove('flex');
+            }, 300);
+        }
+
+        // 必须确保这一行存在，用来绑定叉叉的点击动作
+        document.getElementById('closeEmotionBtn').onclick = (e) => {
+            e.stopPropagation(); // 防止点击穿透到3D场景
+            closeEmotionModal();
+        };
+        // 绑定“情绪日历大盘”打开按钮
+        document.getElementById('btn-open-diary').onclick = (e) => {
+            e.stopPropagation(); // 防止点击穿透
+            toggleCalendar(true);
+        };
+        // 绑定大盘日历右上角的关闭按钮（叉号）
+        document.getElementById('btn-close-diary').onclick = (e) => {
+            e.stopPropagation();
+            toggleCalendar(false);
+        };
+// 修复日历翻页功能
+        document.getElementById('prevMonth').onclick = () => { if(currentCalendarMonth > 0) renderCalendar(--currentCalendarMonth); };
+        document.getElementById('nextMonth').onclick = () => { if(currentCalendarMonth < 11) renderCalendar(++currentCalendarMonth); };
+        document.getElementById('saveBtn').onclick = () => {
+            const selected = document.querySelector('input[name="emotionType"]:checked'); if(!selected) return alert('请先选择一颗希望种下的花种！');
+            let finalStr = "";
+            if (!document.getElementById('ui-mode-text').classList.contains('hidden')) finalStr = document.getElementById('diaryText').value;
+            else if (!document.getElementById('ui-mode-image').classList.contains('hidden')) finalStr = "[图片回忆] " + document.getElementById('imageText').value;
+            else if (!document.getElementById('ui-mode-voice').classList.contains('hidden')) finalStr = "[语音记录] " + document.getElementById('voiceText').value;
+            else finalStr = document.getElementById('diaryText').value;
+            diaryData[currentEditingDateStr] = { type: selected.value, text: finalStr, scaleVar: 0.8 + Math.random() * 0.4, rotY: Math.random() * Math.PI }; closeEmotionModal(); renderCalendar(currentCalendarMonth); renderGarden();
+        };
+        document.getElementById('clearBtn').onclick = () => { delete diaryData[currentEditingDateStr]; closeEmotionModal(); renderCalendar(currentCalendarMonth); renderGarden(); };
+
+        document.querySelectorAll('input[type="range"]').forEach(input => { input.addEventListener('input', (e) => { const id = e.target.id.replace('ctrl-', ''); document.getElementById(`val-${id}`).innerText = parseFloat(e.target.value).toFixed(id==='row'?0:1); if (id === 'wind') { globalWindSway = parseFloat(e.target.value); customShaders.forEach(s => { if (s.uniforms.uWind) s.uniforms.uWind.value = globalWindSway; }); } else renderGarden(); }); });
+        document.getElementById('ctrl-label-month').addEventListener('change', renderGarden); document.getElementById('ctrl-label-date').addEventListener('change', renderGarden); document.getElementById('ctrl-floor').addEventListener('change', e => floorPlane.visible = e.target.checked); document.getElementById('ctrl-grid').addEventListener('change', e => gridHelper.visible = e.target.checked); document.getElementById('btn-regenerate').addEventListener('click', () => { generateRandomDiary(); renderGarden(); }); window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+
+        loadModelsAndInitGarden(); const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate); const elapsedTime = clock.getElapsedTime(); customShaders.forEach(s => { if (s.uniforms.uTime) s.uniforms.uTime.value = elapsedTime; });
+            monthLabelsArray.forEach((sprite, index) => { sprite.position.y = 4 * parseFloat(document.getElementById('ctrl-scale').value) + Math.sin(elapsedTime * 2 + index) * 0.2; });
+            clouds.forEach(cloud => { cloud.position.x += cloud.userData.speed; if(cloud.position.x > 300) cloud.position.x = -300; if(cloud.position.x < -300) cloud.position.x = 300; });
+            if (particles) { const positions = particles.geometry.attributes.position.array; for(let i=1; i<positions.length; i+=3) { positions[i] += 0.02; if (positions[i] > 40) positions[i] = -2; } particles.geometry.attributes.position.needsUpdate = true; particles.rotation.y = Math.sin(elapsedTime * 0.1) * 0.2; }
+            controls.update(); renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
